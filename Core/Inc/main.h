@@ -62,13 +62,17 @@ extern "C" {
 #define KIN1_InitCycleCounter() \
  KIN1_DEMCR |= KIN1_TRCENA_BIT
  /*!< TRCENA: Enable trace and debug block DEMCR (Debug Exception and Monitor Control Register */
-#define KIN1_ResetCycleCounter() \ KIN1_DWT_CYCCNT = 0
+#define KIN1_ResetCycleCounter() \
+ KIN1_DWT_CYCCNT = 0
  /*!< Reset cycle counter */
-#define KIN1_EnableCycleCounter() \ KIN1_DWT_CONTROL |= KIN1_DWT_CYCCNTENA_BIT
+#define KIN1_EnableCycleCounter() \
+ KIN1_DWT_CONTROL |= KIN1_DWT_CYCCNTENA_BIT
  /*!< Enable cycle counter */
-#define KIN1_DisableCycleCounter() \ KIN1_DWT_CONTROL &= ~KIN1_DWT_CYCCNTENA_BIT
+#define KIN1_DisableCycleCounter() \
+ KIN1_DWT_CONTROL &= ~KIN1_DWT_CYCCNTENA_BIT
  /*!< Disable cycle counter */
-#define KIN1_GetCycleCounter() \ KIN1_DWT_CYCCNT
+#define KIN1_GetCycleCounter() \
+ KIN1_DWT_CYCCNT
  /*!< Read cycle counter register */
 
 /* USER CODE END EM */
@@ -107,12 +111,6 @@ void Error_Handler(void);
 #define BOOT1_GPIO_Port GPIOB
 #define CLK_IN_Pin GPIO_PIN_10
 #define CLK_IN_GPIO_Port GPIOB
-#define LD4_Pin GPIO_PIN_12
-#define LD4_GPIO_Port GPIOD
-#define LD3_Pin GPIO_PIN_13
-#define LD3_GPIO_Port GPIOD
-#define LD5_Pin GPIO_PIN_14
-#define LD5_GPIO_Port GPIOD
 #define LD6_Pin GPIO_PIN_15
 #define LD6_GPIO_Port GPIOD
 #define I2S3_MCK_Pin GPIO_PIN_7

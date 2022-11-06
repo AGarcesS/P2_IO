@@ -27,6 +27,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdlib.h>
 #include "stm32f4_discovery_accelerometer.h"
 #include "fsm.h"
 
@@ -41,6 +42,17 @@
 /* USER CODE BEGIN PD */
 
 #define TIEMPO_BOTON 500
+
+#define N_LECTURA 20
+#define N_EJE 3
+
+#define TH_HIGH 200
+#define TH_LOW 100
+
+#define FAULT 90
+#define WARNING 60
+#define NORMAL 30
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -80,24 +92,29 @@ enum led_state{
 	LED_ON
 };
 
+static uint32_t cycles;
+
+static int16_t *lectura;
+static uint8_t i = 0, j = 0, k = 0;
+
 //entradas
 static uint8_t boton = 0;
-static uint8_t sensorx = 0, sensory = 0, sensorz = 0;
+static int16_t sensorx, sensory, sensorz;
+static int16_t *sensorx_v, *sensory_v, *sensorz_v;
 static uint8_t timer_boton = 1, timer_lectura = 0, timer_led = 0;
 
 //variables compartidas
 static uint8_t activado = 0;
 
 //salidas
-static uint8_t faultx=0, faulty=0, faultz=0, led_azul=0;
+static uint8_t faultx=0, warningx=0, normalx=0;
+static uint8_t faulty=0, warningy=0, normaly=0;
+static uint8_t faultz=0, warningz=0, normalz=0;
+static uint8_t led_azul=0;
 
 //funciones de transicion
 static int boton_presionado (fsm_t* this) { if (timer_boton && boton) return 1; else return 0; }
 static int boton_no_presionado (fsm_t* this) { if (timer_boton && !boton) return 1; else return 0; }
-
-static int sensorx_on (fsm_t* this) { return sensorx; }
-static int sensory_on (fsm_t* this) { return sensory; }
-static int sensorz_on (fsm_t* this) { return sensorz; }
 
 static int activado_on (fsm_t* this) { if (timer_lectura && activado) return 1; else return 0; }
 static int activado_off (fsm_t* this) { if (!timer_lectura || !activado) return 1; else return 0; }
@@ -127,36 +144,126 @@ static void activacion (fsm_t* this)
 static void desactivacion (fsm_t* this)
 {
   activado = 0;
+
+  faultx = 0;
+  warningx = 0;
+  normalx = 0;
+
+  faulty = 0;
+  warningy = 0;
+  normaly = 0;
+
+  faultz = 0;
+  warningz = 0;
+  normalz = 0;
 }
 
 static void lectura_x (fsm_t* this)
 {
-  faultx = 1;
+  BSP_ACCELERO_GetXYZ(lectura);
+  sensorx = lectura[0];
+  if(i < N_LECTURA){
+	  sensorx_v[i] = sensorx;
+	  i++;
+  }
+  else{
+	  faultx = 0;
+	  warningx = 0;
+	  normalx = 0;
+	  i = 0;
+	  uint8_t b = 0, c = 0;
+	  for(uint8_t a = 0; a < N_LECTURA; a++){
+		  if(sensorx_v[a] < sensorx_v[b]) //mínimo
+			  b = a;
+		  else if(sensorx_v[a] > sensorx_v[c]) //máximo
+			  c = a;
+	  }
+
+	  int16_t dif_x = sensorx_v[c] - sensorx_v[b];
+	  if(dif_x > TH_HIGH)
+		  faultx = 1;
+	  else if(dif_x > TH_LOW)
+		  warningx = 1;
+	  else
+		  normalx = 1;
+  }
 }
 
 static void lectura_y (fsm_t* this)
 {
-  faulty = 1;
+  BSP_ACCELERO_GetXYZ(lectura);
+  sensory = lectura[1];
+  if(j < N_LECTURA){
+	  sensory_v[j] = sensory;
+	  j++;
+  }
+  else{
+	  faulty = 0;
+	  warningy = 0;
+	  normaly = 0;
+	  j = 0;
+  	  uint8_t b = 0, c = 0;
+  	  for(uint8_t a = 0; a < N_LECTURA; a++){
+  		  if(sensory_v[a] < sensory_v[b]) //mínimo
+  			  b = a;
+  		  else if(sensory_v[a] > sensory_v[c]) //máximo
+  			  c = a;
+  	  }
+
+  	  int16_t dif_y = sensory_v[c] - sensory_v[b];
+  	  if(dif_y > TH_HIGH)
+  		  faulty = 1;
+  	  else if(dif_y > TH_LOW)
+  		  warningy = 1;
+  	  else
+  		  normaly = 1;
+    }
 }
 
 static void lectura_z (fsm_t* this)
 {
-  faultz = 1;
+  BSP_ACCELERO_GetXYZ(lectura);
+  sensorz = lectura[2];
+  if(k < N_LECTURA){
+	  sensorz_v[k] = sensorz;
+	  k++;
+  }
+  else{
+	  faultz = 0;
+	  warningz = 0;
+	  normalz = 0;
+	  k = 0;
+  	  uint8_t b = 0, c = 0;
+  	  for(uint8_t a = 0; a < N_LECTURA; a++){
+  		  if(sensorz_v[a] < sensorz_v[b]) //mínimo
+  			  b = a;
+  		  else if(sensorz_v[a] > sensorz_v[c]) //máximo
+  			  c = a;
+  	  }
+
+  	  int16_t dif_z = sensorz_v[c] - sensorz_v[b];
+  	  if(dif_z > TH_HIGH)
+  		  faultz = 1;
+  	  else if(dif_z > TH_LOW)
+  		  warningz = 1;
+  	  else
+  		  normalz = 1;
+    }
 }
 
 static void lectura_x_fin (fsm_t* this)
 {
-  faultx = 0;
+
 }
 
 static void lectura_y_fin (fsm_t* this)
 {
-  faulty = 0;
+
 }
 
 static void lectura_z_fin (fsm_t* this)
 {
-  faultz = 0;
+
 }
 
 static void led_activado (fsm_t* this)
@@ -179,21 +286,21 @@ static fsm_trans_t inicio[] = {
 static fsm_trans_t lecturax[] = {
   { ESPERA_X, activado_on, LECTURA_X, 0},
   { LECTURA_X, activado_off, ESPERA_X, lectura_x_fin},
-  { LECTURA_X, sensorx_on, LECTURA_X, lectura_x},
+  { LECTURA_X, defecto, LECTURA_X, lectura_x},
   {-1, NULL, -1, NULL },
   };
 
 static fsm_trans_t lecturay[] = {
   { ESPERA_Y, activado_on, LECTURA_Y, 0},
   { LECTURA_Y, activado_off, ESPERA_Y, lectura_y_fin},
-  { LECTURA_Y, sensory_on, LECTURA_Y, lectura_y},
+  { LECTURA_Y, defecto, LECTURA_Y, lectura_y},
   {-1, NULL, -1, NULL },
   };
 
 static fsm_trans_t lecturaz[] = {
   { ESPERA_Z, activado_on, LECTURA_Z, 0},
   { LECTURA_Z, activado_off, ESPERA_Z, lectura_z_fin},
-  { LECTURA_Z, sensorz_on, LECTURA_Z, lectura_z},
+  { LECTURA_Z, defecto, LECTURA_Z, lectura_z},
   {-1, NULL, -1, NULL },
   };
 
@@ -241,12 +348,29 @@ int main(void)
   MX_TIM6_Init();
   MX_TIM2_Init();
   MX_TIM7_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
+
+  KIN1_InitCycleCounter();
+
+  lectura = malloc(N_EJE * sizeof(int16_t));
+
+  sensorx_v = malloc(N_LECTURA * sizeof(int16_t));
+  sensory_v = malloc(N_LECTURA * sizeof(int16_t));
+  sensorz_v = malloc(N_LECTURA * sizeof(int16_t));
+
+  //Acelerómetro
+  if(BSP_ACCELERO_Init() != HAL_OK){
+	  Error_Handler();
+  }
 
   //Temporizadores
   HAL_TIM_Base_Start_IT(&htim6); //Temporizador del led azul
   HAL_TIM_Base_Start_IT(&htim7); //Temporizador para hacer las lecturas
   HAL_TIM_IC_Start_IT(&htim2,TIM_CHANNEL_1); //Temporizador boton
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
 
   //Creación de las FSM
   fsm_t* fsm_inicio = fsm_new (inicio);
@@ -265,6 +389,9 @@ int main(void)
     MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
+    KIN1_ResetCycleCounter();
+    KIN1_EnableCycleCounter();
+
     fsm_fire (fsm_inicio);
     fsm_fire (fsm_lectura_x);
     fsm_fire (fsm_lectura_y);
@@ -279,32 +406,41 @@ int main(void)
 
     //LEDS SENSORES
     if(faultx)
-    	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 1);
+    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, FAULT);
+    else if(warningx)
+    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, WARNING);
+    else if(normalx)
+    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, NORMAL);
     else
-    	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 0);
-    if(faulty)
-    	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, 1);
-    else
-    	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, 0);
-    if(faultz)
-    	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, 1);
-    else
-    	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, 0);
+    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
 
-    //LECTURA SENSORES
-    if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1))
-    	sensorx = 1;
-    else
-    	sensorx = 0;
-    if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2))
-       	sensory = 1;
-    else
-		sensory = 0;
-    if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3))
-       	sensorz = 1;
-    else
-		sensorz = 0;
+    if(faulty)
+    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, FAULT);
+	else if(warningy)
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, WARNING);
+	else if(normaly)
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, NORMAL);
+	else
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 0);
+
+    if(faultz)
+    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, FAULT);
+    else if(warningz)
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, WARNING);
+	else if(normalz)
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, NORMAL);
+	else
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, 0);
+
+    cycles = KIN1_GetCycleCounter();
+
   }
+
+  free(lectura);
+  free(sensorx_v);
+  free(sensory_v);
+  free(sensorz_v);
+
   /* USER CODE END 3 */
 }
 
