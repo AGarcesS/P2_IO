@@ -43,8 +43,8 @@
 
 #define TIEMPO_BOTON 500
 
-#define N_LECTURA 20
-#define N_EJE 3
+#define N_MUESTRAS 20
+#define N_EJES 3
 
 #define TH_HIGH 200
 #define TH_LOW 100
@@ -67,61 +67,71 @@
 //Estados FSM ON-OFF
 enum start_state {
 	OFF,
-	ON,
+	ON
 };
 
 //Estados FSM Lectura-Espera
 enum lecture_state_x{
-	ESPERA_X,
-	LECTURA_X,
+	ESPERA,
+	LECTURA,
+	EVALUACION_X,
+	EVALUACION_Y,
+	EVALUACION_Z,
+	SALIDA_X,
+	SALIDA_Y,
+	SALIDA_Z
 };
-
-enum lecture_state_y{
-	ESPERA_Y,
-	LECTURA_Y,
-};
-
-enum lecture_state_z{
-	ESPERA_Z,
-	LECTURA_Z,
-};
-
-//Estados FSM LED azul
-enum led_state{
-	LED_OFF,
-	LED_ON
-};
-
-static uint32_t cycles;
-
-static int16_t *lectura;
-static uint8_t i = 0, j = 0, k = 0;
 
 //entradas
-static uint8_t boton = 0;
-static int16_t sensorx, sensory, sensorz;
-static int16_t *sensorx_v, *sensory_v, *sensorz_v;
-static uint8_t timer_boton = 1, timer_lectura = 0, timer_led = 0;
+static int16_t *sensor;
+
+//variables
+static int16_t *lectura_x, *lectura_y, *lectura_z;
+static uint8_t a = 0, b = 0, c = 0, d = 0, e = 0, f = 0, muestra = 0;
+static uint8_t timer_boton = 1, timer_led = 0;
+static uint8_t end_temp_lectura = 0;
 
 //variables compartidas
 static uint8_t activado = 0;
 
 //salidas
-static uint8_t faultx=0, warningx=0, normalx=0;
-static uint8_t faulty=0, warningy=0, normaly=0;
-static uint8_t faultz=0, warningz=0, normalz=0;
-static uint8_t led_azul=0;
+/*static uint8_t faultx = 0, warningx = 0, normalx = 0;
+static uint8_t faulty = 0, warningy = 0, normaly = 0;
+static uint8_t faultz = 0, warningz = 0, normalz = 0;
+static uint8_t led_azul = 0;*/
 
 //funciones de transicion
-static int boton_presionado (fsm_t* this) { if (timer_boton && boton) return 1; else return 0; }
-static int boton_no_presionado (fsm_t* this) { if (timer_boton && !boton) return 1; else return 0; }
+static int boton_presionado (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
+static int boton_no_presionado (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
+static int led_on (fsm_t* this) { if(timer_led == 1) return 1; else return 0; }
+static int led_off (fsm_t* this) { if(timer_led == 2) return 1; else return 0;}
 
-static int activado_on (fsm_t* this) { if (timer_lectura && activado) return 1; else return 0; }
-static int activado_off (fsm_t* this) { if (!timer_lectura || !activado) return 1; else return 0; }
-static int activado_on_led (fsm_t* this) { if (timer_led && activado) return 1; else return 0; }
-static int activado_off_led (fsm_t* this) { if (!timer_led||!activado) return 1; else return 0; }
+static int activado_on (fsm_t* this) { return activado; }
+static int activado_off (fsm_t* this) { return !activado; }
 
-static int defecto (fsm_t* this)  {return 1;}
+static int muestra_acc (fsm_t* this)  {if ((muestra < N_MUESTRAS) && end_temp_lectura && activado ) return 1; else return 0;}
+static int muestra_max (fsm_t* this)  {if ((muestra >= N_MUESTRAS) && activado) return 1; else return 0;}
+static int max_x (fsm_t* this)  {if ((lectura_x[muestra] >= lectura_x[a]) && activado) return 1; else return 0;}
+static int min_x (fsm_t* this)  {if ((lectura_x[muestra] < lectura_x[b]) && activado) return 1; else return 0;}
+static int med_x (fsm_t* this)  {if ((lectura_x[muestra] >= lectura_x[b]) && (lectura_x[muestra] < lectura_x[a]) && activado) return 1; else return 0;}
+static int max_y (fsm_t* this)  {if ((lectura_y[muestra] >= lectura_y[c]) && activado) return 1; else return 0;}
+static int min_y (fsm_t* this)  {if ((lectura_y[muestra] < lectura_y[d]) && activado) return 1; else return 0;}
+static int med_y (fsm_t* this)  {if ((lectura_y[muestra] >= lectura_y[d]) && (lectura_y[muestra] < lectura_y[c]) && activado) return 1; else return 0;}
+static int max_z_muestra (fsm_t* this)  {if ((lectura_z[muestra] >= lectura_z[e]) && (muestra < N_MUESTRAS - 1) && activado) return 1; else return 0;}
+static int min_z_muestra (fsm_t* this)  {if ((lectura_z[muestra] < lectura_z[f]) && (muestra < N_MUESTRAS - 1) && activado) return 1; else return 0;}
+static int med_z_muestra (fsm_t* this)  {if ((lectura_z[muestra] >= lectura_z[f]) && (lectura_z[muestra] < lectura_z[e]) && (muestra < N_MUESTRAS - 1) && activado) return 1; else return 0;}
+static int max_z_fin (fsm_t* this)  {if ((lectura_z[muestra] >= lectura_z[e]) && (muestra >= N_MUESTRAS - 1) && activado) return 1; else return 0;}
+static int min_z_fin (fsm_t* this)  {if ((lectura_z[muestra] < lectura_z[f]) && (muestra >= N_MUESTRAS - 1) && activado) return 1; else return 0;}
+static int med_z_fin (fsm_t* this)  {if ((lectura_z[muestra] >= lectura_z[f]) && (lectura_z[muestra] < lectura_z[e]) && (muestra >= N_MUESTRAS - 1) && activado) return 1; else return 0;}
+static int resta_x_fault (fsm_t* this)  {if (((lectura_x[a] - lectura_x[b]) >= FAULT) && activado) return 1; else return 0;}
+static int resta_x_warning (fsm_t* this)  {if (((lectura_x[a] - lectura_x[b]) < FAULT) && ((lectura_x[a] - lectura_x[b]) > WARNING) && activado) return 1; else return 0;}
+static int resta_x_normal (fsm_t* this)  {if (((lectura_x[a] - lectura_x[b]) <= WARNING) && activado) return 1; else return 0;}
+static int resta_y_fault (fsm_t* this)  {if (((lectura_y[c] - lectura_y[d]) >= FAULT) && activado) return 1; else return 0;}
+static int resta_y_warning (fsm_t* this)  {if (((lectura_y[c] - lectura_y[d]) < FAULT) && ((lectura_y[c] - lectura_y[d]) > WARNING) && activado) return 1; else return 0;}
+static int resta_y_normal (fsm_t* this)  {if (((lectura_y[c] - lectura_y[d]) <= WARNING) && activado) return 1; else return 0;}
+static int resta_z_fault (fsm_t* this)  {if (((lectura_z[e] - lectura_z[f]) >= FAULT) && activado && end_temp_lectura) return 1; else return 0;}
+static int resta_z_warning (fsm_t* this)  {if (((lectura_z[e] - lectura_z[f]) < FAULT) && ((lectura_z[e] - lectura_z[f]) > WARNING) && activado && end_temp_lectura) return 1; else return 0;}
+static int resta_z_normal (fsm_t* this)  {if (((lectura_z[e] - lectura_z[f]) <= WARNING) && activado && end_temp_lectura) return 1; else return 0;}
 
 /* USER CODE END PV */
 
@@ -139,175 +149,256 @@ void MX_USB_HOST_Process(void);
 static void activacion (fsm_t* this)
 {
   activado = 1;
+  timer_boton = 0;
+  HAL_TIM_Base_Start_IT(&htim9); //Temporizador boton
+  HAL_TIM_Base_Start_IT(&htim6); //Temporizador del led azul
 }
 
-static void desactivacion (fsm_t* this)
+static void desactivacion_inicio (fsm_t* this)
 {
   activado = 0;
+  timer_boton = 0;
+  HAL_TIM_Base_Stop_IT(&htim6); //Temporizador del led azul
+  timer_led = 1;
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
+}
 
-  faultx = 0;
+static void desactivacion_lectura (fsm_t* this)
+{
+  muestra = 0;
+  /*faultx = 0;
   warningx = 0;
   normalx = 0;
-
   faulty = 0;
   warningy = 0;
   normaly = 0;
-
   faultz = 0;
   warningz = 0;
-  normalz = 0;
+  normalz = 0;*/
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 0);
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, 0);
+  a = 0;
+  b = 0;
+  c = 0;
+  d = 0;
+  e = 0;
+  f = 0;
+  end_temp_lectura = 0;
 }
 
-static void lectura_x (fsm_t* this)
+static void fin_lectura (fsm_t* this)
 {
-  BSP_ACCELERO_GetXYZ(lectura);
-  sensorx = lectura[0];
-  if(i < N_LECTURA){
-	  sensorx_v[i] = sensorx;
-	  i++;
-  }
-  else{
-	  faultx = 0;
-	  warningx = 0;
-	  normalx = 0;
-	  i = 0;
-	  uint8_t b = 0, c = 0;
-	  for(uint8_t a = 0; a < N_LECTURA; a++){
-		  if(sensorx_v[a] < sensorx_v[b]) //mínimo
-			  b = a;
-		  else if(sensorx_v[a] > sensorx_v[c]) //máximo
-			  c = a;
-	  }
-
-	  int16_t dif_x = sensorx_v[c] - sensorx_v[b];
-	  if(dif_x > TH_HIGH)
-		  faultx = 1;
-	  else if(dif_x > TH_LOW)
-		  warningx = 1;
-	  else
-		  normalx = 1;
-  }
+  muestra = 0;
 }
 
-static void lectura_y (fsm_t* this)
-{
-  BSP_ACCELERO_GetXYZ(lectura);
-  sensory = lectura[1];
-  if(j < N_LECTURA){
-	  sensory_v[j] = sensory;
-	  j++;
-  }
-  else{
-	  faulty = 0;
-	  warningy = 0;
-	  normaly = 0;
-	  j = 0;
-  	  uint8_t b = 0, c = 0;
-  	  for(uint8_t a = 0; a < N_LECTURA; a++){
-  		  if(sensory_v[a] < sensory_v[b]) //mínimo
-  			  b = a;
-  		  else if(sensory_v[a] > sensory_v[c]) //máximo
-  			  c = a;
-  	  }
-
-  	  int16_t dif_y = sensory_v[c] - sensory_v[b];
-  	  if(dif_y > TH_HIGH)
-  		  faulty = 1;
-  	  else if(dif_y > TH_LOW)
-  		  warningy = 1;
-  	  else
-  		  normaly = 1;
-    }
-}
-
-static void lectura_z (fsm_t* this)
-{
-  BSP_ACCELERO_GetXYZ(lectura);
-  sensorz = lectura[2];
-  if(k < N_LECTURA){
-	  sensorz_v[k] = sensorz;
-	  k++;
-  }
-  else{
-	  faultz = 0;
-	  warningz = 0;
-	  normalz = 0;
-	  k = 0;
-  	  uint8_t b = 0, c = 0;
-  	  for(uint8_t a = 0; a < N_LECTURA; a++){
-  		  if(sensorz_v[a] < sensorz_v[b]) //mínimo
-  			  b = a;
-  		  else if(sensorz_v[a] > sensorz_v[c]) //máximo
-  			  c = a;
-  	  }
-
-  	  int16_t dif_z = sensorz_v[c] - sensorz_v[b];
-  	  if(dif_z > TH_HIGH)
-  		  faultz = 1;
-  	  else if(dif_z > TH_LOW)
-  		  warningz = 1;
-  	  else
-  		  normalz = 1;
-    }
-}
-
-static void lectura_x_fin (fsm_t* this)
-{
-
-}
-
-static void lectura_y_fin (fsm_t* this)
-{
-
-}
-
-static void lectura_z_fin (fsm_t* this)
-{
-
-}
 
 static void led_activado (fsm_t* this)
 {
-  led_azul = 1;
+  //led_azul = 1;
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 1);
 }
 
-static void led_no_activado (fsm_t* this)
+static void led_desactivado (fsm_t* this)
 {
-  led_azul = 0;
+  timer_led = 0;
+  //led_azul = 0;
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
+}
+
+static void lectura_ejes (fsm_t* this)
+{
+  BSP_ACCELERO_GetXYZ(sensor);
+
+  lectura_x[muestra] = sensor[0];
+  lectura_y[muestra] = sensor[1];
+  lectura_z[muestra] = sensor[2];
+  muestra++;
+
+  end_temp_lectura = 0;
+}
+
+static void act_max_x (fsm_t* this)
+{
+  a = muestra;
+}
+
+static void act_min_x (fsm_t* this)
+{
+  b = muestra;
+}
+
+static void act_max_y (fsm_t* this)
+{
+  c = muestra;
+}
+
+static void act_min_y (fsm_t* this)
+{
+  d = muestra;
+}
+
+static void act_max_z_muestra (fsm_t* this)
+{
+  e = muestra;
+  muestra++;
+}
+
+static void act_min_z_muestra (fsm_t* this)
+{
+  f = muestra;
+  muestra++;
+}
+
+static void act_med_z_muestra (fsm_t* this)
+{
+  muestra++;
+}
+
+static void act_max_z_fin (fsm_t* this)
+{
+  e = muestra;
+}
+
+static void act_min_z_fin (fsm_t* this)
+{
+  f = muestra;
+}
+
+static void fault_x (fsm_t* this)
+{
+  /*faultx = 1;
+  warningx = 0;
+  normalx = 0;*/
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, FAULT);
+}
+
+static void warning_x (fsm_t* this)
+{
+  /*faultx = 0;
+  warningx = 1;
+  normalx = 0;*/
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, WARNING);
+}
+
+static void normal_x (fsm_t* this)
+{
+  /*faultx = 0;
+  warningx = 0;
+  normalx = 1;*/
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, NORMAL);
+}
+
+static void fault_y (fsm_t* this)
+{
+  /*faulty = 1;
+  warningy = 0;
+  normaly = 0;*/
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, FAULT);
+
+}
+
+static void warning_y (fsm_t* this)
+{
+  /*faulty = 0;
+  warningy = 1;
+  normaly = 0;*/
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, WARNING);
+}
+
+static void normal_y (fsm_t* this)
+{
+  /*faulty = 0;
+  warningy = 0;
+  normaly = 1;*/
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, NORMAL);
+}
+
+static void fault_z (fsm_t* this)
+{
+  /*faultz = 1;
+  warningz = 0;
+  normalz = 0;*/
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, FAULT);
+  muestra = 0;
+  a = 0;
+  b = 0;
+  c = 0;
+  d = 0;
+  e = 0;
+  f = 0;
+}
+
+static void warning_z (fsm_t* this)
+{
+  /*faultz = 0;
+  warningz = 1;
+  normalz = 0;*/
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, WARNING);
+  muestra = 0;
+  a = 0;
+  b = 0;
+  c = 0;
+  d = 0;
+  e = 0;
+  f = 0;
+}
+
+static void normal_z (fsm_t* this)
+{
+  /*faultz = 0;
+  warningz = 0;
+  normalz = 1;*/
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, NORMAL);
+  muestra = 0;
+  a = 0;
+  b = 0;
+  c = 0;
+  d = 0;
+  e = 0;
+  f = 0;
 }
 
 static fsm_trans_t inicio[] = {
   { OFF, boton_presionado, ON, activacion},
-  { ON, boton_no_presionado, OFF,  desactivacion },
-  { ON, defecto, ON,  activacion },
+  { ON, boton_no_presionado, OFF,  desactivacion_inicio },
+  { ON, led_on, ON,  led_activado },
+  { ON, led_off, ON,  led_desactivado },
   {-1, NULL, -1, NULL },
   };
 
-static fsm_trans_t lecturax[] = {
-  { ESPERA_X, activado_on, LECTURA_X, 0},
-  { LECTURA_X, activado_off, ESPERA_X, lectura_x_fin},
-  { LECTURA_X, defecto, LECTURA_X, lectura_x},
-  {-1, NULL, -1, NULL },
-  };
-
-static fsm_trans_t lecturay[] = {
-  { ESPERA_Y, activado_on, LECTURA_Y, 0},
-  { LECTURA_Y, activado_off, ESPERA_Y, lectura_y_fin},
-  { LECTURA_Y, defecto, LECTURA_Y, lectura_y},
-  {-1, NULL, -1, NULL },
-  };
-
-static fsm_trans_t lecturaz[] = {
-  { ESPERA_Z, activado_on, LECTURA_Z, 0},
-  { LECTURA_Z, activado_off, ESPERA_Z, lectura_z_fin},
-  { LECTURA_Z, defecto, LECTURA_Z, lectura_z},
-  {-1, NULL, -1, NULL },
-  };
-
-static fsm_trans_t led_activo[] = {
-  { LED_OFF, activado_on_led, LED_ON, led_activado},
-  { LED_ON, activado_off_led, LED_OFF, led_no_activado},
-  { LED_ON, defecto, LED_ON, led_activado},
+static fsm_trans_t lectura_acc[] = {
+  { ESPERA, activado_on, LECTURA, 0},
+  { LECTURA, activado_off, ESPERA, desactivacion_lectura},
+  { LECTURA, muestra_acc, LECTURA, lectura_ejes},
+  { LECTURA, muestra_max, EVALUACION_X, fin_lectura},
+  { EVALUACION_X, max_x, EVALUACION_Y, act_max_x},
+  { EVALUACION_X, min_x, EVALUACION_Y, act_min_x},
+  { EVALUACION_X, med_x, EVALUACION_Y, 0},
+  { EVALUACION_X, activado_off, ESPERA, desactivacion_lectura},
+  { EVALUACION_Y, max_y, EVALUACION_Z, act_max_y},
+  { EVALUACION_Y, min_y, EVALUACION_Z, act_min_y},
+  { EVALUACION_Y, med_y, EVALUACION_Z, 0},
+  { EVALUACION_Y, activado_off, ESPERA, desactivacion_lectura},
+  { EVALUACION_Z, max_z_muestra, EVALUACION_X, act_max_z_muestra},
+  { EVALUACION_Z, min_z_muestra, EVALUACION_X, act_min_z_muestra},
+  { EVALUACION_Z, med_z_muestra, EVALUACION_X, act_med_z_muestra},
+  { EVALUACION_Z, max_z_fin, SALIDA_X, act_max_z_fin},
+  { EVALUACION_Z, min_z_fin, SALIDA_X, act_min_z_fin},
+  { EVALUACION_Z, med_z_fin, SALIDA_X, 0},
+  { EVALUACION_Z, activado_off, ESPERA, desactivacion_lectura},
+  { SALIDA_X, resta_x_fault, SALIDA_Y, fault_x},
+  { SALIDA_X, resta_x_warning, SALIDA_Y, warning_x},
+  { SALIDA_X, resta_x_normal, SALIDA_Y, normal_x},
+  { SALIDA_X, activado_off, ESPERA, desactivacion_lectura},
+  { SALIDA_Y, resta_y_fault, SALIDA_Z, fault_y},
+  { SALIDA_Y, resta_y_warning, SALIDA_Z, warning_y},
+  { SALIDA_Y, resta_y_normal, SALIDA_Z, normal_y},
+  { SALIDA_Y, activado_off, ESPERA, desactivacion_lectura},
+  { SALIDA_Z, resta_z_fault, LECTURA, fault_z},
+  { SALIDA_Z, resta_z_warning, LECTURA, warning_z},
+  { SALIDA_Z, resta_z_normal, LECTURA, normal_z},
+  { SALIDA_Z, activado_off, ESPERA, desactivacion_lectura},
   {-1, NULL, -1, NULL },
   };
 
@@ -346,18 +437,18 @@ int main(void)
   MX_SPI1_Init();
   MX_USB_HOST_Init();
   MX_TIM6_Init();
-  MX_TIM2_Init();
   MX_TIM7_Init();
   MX_TIM4_Init();
+  MX_TIM9_Init();
   /* USER CODE BEGIN 2 */
 
   KIN1_InitCycleCounter();
 
-  lectura = malloc(N_EJE * sizeof(int16_t));
+  sensor = malloc(N_EJES * sizeof(int16_t));
 
-  sensorx_v = malloc(N_LECTURA * sizeof(int16_t));
-  sensory_v = malloc(N_LECTURA * sizeof(int16_t));
-  sensorz_v = malloc(N_LECTURA * sizeof(int16_t));
+  lectura_x = malloc(N_MUESTRAS * sizeof(int16_t));
+  lectura_y = malloc(N_MUESTRAS * sizeof(int16_t));
+  lectura_z = malloc(N_MUESTRAS * sizeof(int16_t));
 
   //Acelerómetro
   if(BSP_ACCELERO_Init() != HAL_OK){
@@ -365,19 +456,15 @@ int main(void)
   }
 
   //Temporizadores
-  HAL_TIM_Base_Start_IT(&htim6); //Temporizador del led azul
+
   HAL_TIM_Base_Start_IT(&htim7); //Temporizador para hacer las lecturas
-  HAL_TIM_IC_Start_IT(&htim2,TIM_CHANNEL_1); //Temporizador boton
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
 
   //Creación de las FSM
   fsm_t* fsm_inicio = fsm_new (inicio);
-  fsm_t* fsm_lectura_x = fsm_new (lecturax);
-  fsm_t* fsm_lectura_y = fsm_new (lecturay);
-  fsm_t* fsm_lectura_z = fsm_new (lecturaz);
-  fsm_t* fsm_led_activo = fsm_new (led_activo);
+  fsm_t* fsm_lectura = fsm_new (lectura_acc);
 
   /* USER CODE END 2 */
 
@@ -389,57 +476,15 @@ int main(void)
     MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
-    KIN1_ResetCycleCounter();
-    KIN1_EnableCycleCounter();
 
     fsm_fire (fsm_inicio);
-    fsm_fire (fsm_lectura_x);
-    fsm_fire (fsm_lectura_y);
-    fsm_fire (fsm_lectura_z);
-    fsm_fire (fsm_led_activo);
-
-    //LED SISTEMA ENCENDIDO
-    if(led_azul)
-    	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 1);
-    else
-    	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
-
-    //LEDS SENSORES
-    if(faultx)
-    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, FAULT);
-    else if(warningx)
-    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, WARNING);
-    else if(normalx)
-    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, NORMAL);
-    else
-    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
-
-    if(faulty)
-    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, FAULT);
-	else if(warningy)
-		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, WARNING);
-	else if(normaly)
-		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, NORMAL);
-	else
-		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 0);
-
-    if(faultz)
-    	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, FAULT);
-    else if(warningz)
-		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, WARNING);
-	else if(normalz)
-		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, NORMAL);
-	else
-		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, 0);
-
-    cycles = KIN1_GetCycleCounter();
-
+    fsm_fire (fsm_lectura);
   }
 
-  free(lectura);
-  free(sensorx_v);
-  free(sensory_v);
-  free(sensorz_v);
+  free(sensor);
+  free(lectura_x);
+  free(lectura_y);
+  free(lectura_z);
 
   /* USER CODE END 3 */
 }
@@ -490,36 +535,15 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim){
-	//Comprobar que viene del timer 2
-	if (htim->Instance==TIM2){
-		if(boton)
-			boton = 0;
-		else
-			boton = 1;
-		if(__HAL_TIM_GetCounter(htim) > TIEMPO_BOTON)
-			timer_boton = 1;
-		else
-			timer_boton = 0;
-		__HAL_TIM_SetCounter(htim,0);
-	}
-}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 {
 	if(htim->Instance==TIM6)
-	{
-		if(timer_led)
-			timer_led = 0;
-		else
-			timer_led = 1;
-	}
+		timer_led++;
 	if(htim->Instance==TIM7)
-	{
-		if(timer_lectura)
-			timer_lectura = 0;
-		else
-			timer_lectura = 1;
-	}
+		end_temp_lectura = 1;
+	if(htim->Instance==TIM9)
+		timer_boton = 1;
 }
 
 /* USER CODE END 4 */
