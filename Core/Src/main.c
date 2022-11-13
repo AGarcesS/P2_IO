@@ -41,8 +41,6 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define TIEMPO_BOTON 500
-
 #define N_MUESTRAS 20
 #define N_EJES 3
 
@@ -85,13 +83,12 @@ enum lecture_state_x{
 static int16_t *sensor;
 
 //variables
-static int16_t lectura[N_EJES][N_MUESTRAS], max[N_EJES], min[N_EJES];
+static int16_t **lectura, *max, *min;
 static uint8_t muestra = 0, eje = 0;
-static uint8_t timer_boton = 1, timer_led = 0;
-static uint8_t end_temp_lectura = 0;
 
 //variables compartidas
 static uint8_t activado = 0;
+static uint8_t timer_boton = 1, timer_led = 0, end_temp_lectura = 0;
 
 //salidas
 static uint8_t faultx = 0, warningx = 0, normalx = 0;
@@ -108,11 +105,11 @@ static int led_off (fsm_t* this) { if(timer_led == 2) return 1; else return 0;}
 static int activado_on (fsm_t* this) { return activado; }
 static int activado_off (fsm_t* this) { return !activado; }
 
-static int muestreo_listo (fsm_t* this)  {if ((muestra <= N_MUESTRAS - 1) && (eje <= N_EJES - 1) && end_temp_lectura && activado ) return 1; else return 0;}
-static int fin_eje (fsm_t* this)  {if ((muestra > N_MUESTRAS - 1) && end_temp_lectura && activado ) return 1; else return 0;}
-static int eje_max (fsm_t* this)  {if ((eje > N_EJES - 1) && activado ) return 1; else return 0;}
-static int eje_no_max (fsm_t* this)  {if ((eje <= N_EJES - 1) && activado ) return 1; else return 0;}
-static int eje_max_fin (fsm_t* this)  {if ((eje > N_EJES - 1) && end_temp_lectura && activado ) return 1; else return 0;}
+static int muestreo_listo (fsm_t* this)  {if ((muestra < N_MUESTRAS) && (eje < N_EJES) && end_temp_lectura && activado ) return 1; else return 0;}
+static int fin_eje (fsm_t* this)  {if ((muestra >= N_MUESTRAS) && activado ) return 1; else return 0;}
+static int eje_max (fsm_t* this)  {if ((eje >= N_EJES) && activado ) return 1; else return 0;}
+static int eje_no_max (fsm_t* this)  {if ((eje < N_EJES - 1) && activado ) return 1; else return 0;}
+static int eje_max_fin (fsm_t* this)  {if ((eje >= N_EJES - 1) && end_temp_lectura && activado ) return 1; else return 0;}
 static int muestra_no_max (fsm_t* this)  {if ((muestra < N_MUESTRAS - 1) && activado ) return 1; else return 0;}
 static int eje_no_listo (fsm_t* this)  {if ((muestra >= N_MUESTRAS - 1) && (eje < N_EJES - 1) && activado ) return 1; else return 0;}
 static int eje_listo (fsm_t* this)  {if ((muestra >= N_MUESTRAS - 1) && (eje >= N_EJES - 1) && activado ) return 1; else return 0;}
@@ -382,9 +379,12 @@ int main(void)
   KIN1_InitCycleCounter();
 
   sensor = malloc(N_EJES * sizeof(int16_t));
-
-  /**lectura = malloc(N_EJES * sizeof(int16_t));
-  lectura = malloc(N_MUESTRAS * sizeof(int16_t));*/
+  lectura = malloc(N_EJES * sizeof(int16_t*));
+  for (uint8_t i = 0; i < N_EJES; i++) {
+      lectura[i] = malloc(N_MUESTRAS * sizeof(int16_t));
+  }
+  max = malloc(N_EJES * sizeof(int16_t));
+  min = malloc(N_EJES * sizeof(int16_t));
 
   //Acelerómetro
   if(BSP_ACCELERO_Init() != HAL_OK){
@@ -418,9 +418,12 @@ int main(void)
   }
 
   free(sensor);
-  /*free(lectura_x);
-  free(lectura_y);
-  free(lectura_z);*/
+  for (uint8_t i = 0; i < N_MUESTRAS; i++) {
+      free(lectura[i]);
+  }
+  free(lectura);
+  free(max);
+  free(min);
 
   /* USER CODE END 3 */
 }
