@@ -44,8 +44,6 @@
 #define N_MUESTRAS 20
 #define N_EJES 3
 
-#define CICLOS_LED 2
-
 #define TH_HIGH 200
 #define TH_LOW 100
 
@@ -96,7 +94,7 @@ static int16_t *sensor;
 //variables
 static int16_t **lectura, *max, *min;
 static uint8_t muestra = 0, eje = 0;
-volatile static uint8_t timer_boton = 1, counter_led = 0, timer_lectura = 0;
+volatile static uint8_t timer_boton = 1, led_azul = 0, timer_lectura = 0;
 
 //variables compartidas
 static uint8_t activado = 0;
@@ -107,9 +105,6 @@ static int boton_presionado_on (fsm_t* this) { if (HAL_GPIO_ReadPin(GPIOA, GPIO_
 static int boton_no_presionado_on (fsm_t* this) { if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) && activado) return 1; else return 0; }
 static int boton_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
 static int boton_no_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) return 1; else return 0; }
-
-static int led_on (fsm_t* this) { if((counter_led >= CICLOS_LED - 1) && (counter_led < CICLOS_LED)&&activado) return 1; else return 0; }
-static int led_off (fsm_t* this) { if((counter_led >= CICLOS_LED)&&activado) return 1; else return 0;}
 
 
 static int activado_on (fsm_t* this) { return activado; }
@@ -146,7 +141,7 @@ static void activacion_inicio (fsm_t* this)
 {
   activado = 1;
   timer_boton=0;
-  counter_led=0;
+  led_azul=0;
   __HAL_TIM_SET_COUNTER(&htim9,0); //Reinicio a cero del temporizador del boton
   __HAL_TIM_SET_COUNTER(&htim6,0); //Reinicio a cero del temporizador del led
   HAL_TIM_Base_Start_IT(&htim9); //Temporizador boton
@@ -157,8 +152,9 @@ static void desactivacion_inicio (fsm_t* this)
 {
   activado = 0;
   timer_boton = 0;
+  led_azul=0;
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
-
+  HAL_TIM_Base_Stop_IT(&htim6); //Temporizador del led azul stop
 }
 
 static void reinicio_inicio (fsm_t* this)
@@ -168,17 +164,9 @@ static void reinicio_inicio (fsm_t* this)
   timer_boton = 0;
 }
 
-
-static void led_activado (fsm_t* this)
+static void toggle_led (fsm_t* this)
 {
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 1);
-}
-
-static void led_desactivado (fsm_t* this)
-{
-  counter_led = 0;
-  __HAL_TIM_SET_COUNTER(&htim6,0); //Reinicio a cero del temporizador del led
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0); //Apagar led
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, led_azul);
 }
 
 static void desactivacion_muestreo (fsm_t* this)
@@ -293,11 +281,9 @@ static void salida_normal (fsm_t* this)
 static fsm_trans_t inicio[] = {
   { OFF, boton_presionado_on, BOTON_PULSADO, activacion_inicio},
   { BOTON_PULSADO, boton_no_presionado_on, ON, 0},
-  {BOTON_PULSADO,led_on,BOTON_PULSADO,led_activado},
-  {BOTON_PULSADO,led_off,BOTON_PULSADO,led_desactivado},
+  {BOTON_PULSADO,activado_on,BOTON_PULSADO,toggle_led},
   { ON, boton_presionado_off, BOTON_PULSADO,  desactivacion_inicio },
-  { ON, led_on, ON, led_activado},
-  { ON, led_off, ON, led_desactivado},
+  { ON, activado_on, ON, toggle_led},
   { BOTON_PULSADO, boton_no_presionado_off, OFF, reinicio_inicio },
   {-1, NULL, -1, NULL },
   };
@@ -455,8 +441,10 @@ void SystemClock_Config(void)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 {
-	if(htim->Instance==TIM6)
-		counter_led++;
+	if(htim->Instance==TIM6){
+		if(led_azul){led_azul=0;}
+		else {led_azul=1;}
+	}
 	if(htim->Instance==TIM7)
 		timer_lectura = 1;
 	if(htim->Instance==TIM9)
