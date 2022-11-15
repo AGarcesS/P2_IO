@@ -72,12 +72,11 @@ enum start_state {
 };
 
 //Estados FSM Lectura-Espera
-enum lecture_state_x{
+enum lecture_state{
 	STOP,
 	MUESTREO,
 	MAX_MIN,
 	CONTADOR_MUESTRA,
-	CONTADOR_EJE,
 	SALIDA,
 	GRADO
 };
@@ -86,6 +85,12 @@ enum ejes{
 	x,
 	y,
 	z
+};
+
+enum salida_eje{
+	normal,
+	warning,
+	fault
 };
 
 uint32_t ciclos;
@@ -102,19 +107,16 @@ static uint8_t activado = 0;
 static uint8_t timer_boton = 0, temp_led = 0, timer_lectura = 0;
 
 //salidas
-static uint8_t faultx = 0, warningx = 0, normalx = 0;
-static uint8_t faulty = 0, warningy = 0, normaly = 0;
-static uint8_t faultz = 0, warningz = 0, normalz = 0;
-static uint8_t led_azul = 0;
+
+
 
 //funciones de transicion
-static int boton_presionado_on (fsm_t* this) { if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
-static int boton_no_presionado_on (fsm_t* this) { if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) && activado) return 1; else return 0; }
-static int boton_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
-static int boton_no_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) return 1; else return 0; }
+static int boton_presionado (fsm_t* this) { if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0)) return 1; else return 0; }
+static int maquina_ON (fsm_t* this) { if (timer_boton && activado) return 1; else return 0; }
+static int maquina_OFF (fsm_t* this) {if(timer_boton&&!activado)return 1; else return0;}
 
-static int led_on (fsm_t* this) { if((temp_led >= CICLOS_LED - 1) && (temp_led < CICLOS_LED)) return 1; else return 0; }
-static int led_off (fsm_t* this) { if(temp_led >= CICLOS_LED) return 1; else return 0;}
+static int led_on (fsm_t* this) { if((temp_led >= CICLOS_LED - 1) && (temp_led < CICLOS_LED)&&activado) return 1; else return 0; }
+static int led_off (fsm_t* this) { if((temp_led >= CICLOS_LED)&&activado) return 1; else return 0;}
 
 static int activado_on (fsm_t* this) { return activado; }
 static int activado_off (fsm_t* this) { return !activado; }
@@ -129,9 +131,9 @@ static int eje_listo (fsm_t* this)  {if ((muestra >= N_MUESTRAS - 1) && (eje >= 
 static int max_muestra (fsm_t* this)  {if ((lectura[eje][muestra] >= max[eje]) && activado) return 1; else return 0;}
 static int min_muestra (fsm_t* this)  {if ((lectura[eje][muestra] < min[eje]) && activado) return 1; else return 0;}
 static int med_muestra (fsm_t* this)  {if ((lectura[eje][muestra] >= min[eje]) && (lectura[eje][muestra] < max[eje]) && activado) return 1; else return 0;}
-static int fault (fsm_t* this)  {if (((max[eje] - min[eje]) >= TH_HIGH) && activado) return 1; else return 0;}
-static int warning (fsm_t* this)  {if (((max[eje] - min[eje]) < TH_HIGH) && ((max[eje] - min[eje]) > TH_LOW) && activado) return 1; else return 0;}
-static int normal (fsm_t* this)  {if (((max[eje] - min[eje]) <= TH_LOW) && activado) return 1; else return 0;}
+static int fault_out (fsm_t* this)  {if (((max[eje] - min[eje]) >= TH_HIGH) && activado) return 1; else return 0;}
+static int warning_out (fsm_t* this)  {if (((max[eje] - min[eje]) < TH_HIGH) && ((max[eje] - min[eje]) > TH_LOW) && activado) return 1; else return 0;}
+static int normal_out (fsm_t* this)  {if (((max[eje] - min[eje]) <= TH_LOW) && activado) return 1; else return 0;}
 
 /* USER CODE END PV */
 
@@ -146,24 +148,31 @@ void MX_USB_HOST_Process(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-static void activacion_inicio (fsm_t* this)
+static void activacion_maquina (fsm_t* this)
 {
   activado = 1;
+  temp_boton = 0;
+  temp_led = 0;
+  __HAL_TIM_SET_COUNTER(&htim9,0); //Reinicio a cero del temporizador del boton
+  __HAL_TIM_SET_COUNTER(&htim6,0); //Reinicio a cero del temporizador del led
   HAL_TIM_Base_Start_IT(&htim9); //Temporizador boton
   HAL_TIM_Base_Start_IT(&htim6); //Temporizador del led azul
 }
 
-static void desactivacion_inicio (fsm_t* this)
+static void desactivacion_maquina (fsm_t* this)
 {
   activado = 0;
-  timer_boton = 0;
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
-  HAL_TIM_Base_Stop_IT(&htim6); //Temporizador del led azul
+  timer_boton = 0
+  __HAL_TIM_SET_COUNTER(&htim9,0); //Reinicio a cero del temporizador del boton
+  HAL_TIM_Base_Start_IT(&htim9); //Temporizador boton comienza
+  HAL_TIM_Base_Stop_IT(&htim6); //Stop temporizador led
+  led_desactivado(this); //Apagar led y reiniciar su cuenta a 0
 }
 
-static void reinicio_inicio (fsm_t* this)
+static void temporizacion_boton_off (fsm_t* this)
 {
-  HAL_TIM_Base_Stop_IT(&htim9); //Temporizador boton
+  HAL_TIM_Base_Stop_IT(&htim9); //Stop temporizador boton
+  __HAL_TIM_SET_COUNTER(&htim9,0); //Reinicio a cero del temporizador del boton
   timer_boton = 0;
 }
 
@@ -171,15 +180,6 @@ static void desactivacion_muestreo (fsm_t* this)
 {
   muestra = 0;
   eje = 0;
-  faultx = 0;
-  warningx = 0;
-  normalx = 0;
-  faulty = 0;
-  warningy = 0;
-  normaly = 0;
-  faultz = 0;
-  warningz = 0;
-  normalz = 0;
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 0);
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, 0);
@@ -187,15 +187,14 @@ static void desactivacion_muestreo (fsm_t* this)
 
 static void led_activado (fsm_t* this)
 {
-  led_azul = 1;
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 1);
 }
 
 static void led_desactivado (fsm_t* this)
 {
-  led_azul = 0;
   temp_led = 0;
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
+  __HAL_TIM_SET_COUNTER(&htim6,0); //Reinicio a cero del temporizador del led
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0); //Apagar led
 }
 
 static void preparacion_muestreo (fsm_t* this)
@@ -335,12 +334,14 @@ static void salida_normal (fsm_t* this)
 }
 
 static fsm_trans_t inicio[] = {
-  { OFF, boton_presionado_on, BOTON_PULSADO, activacion_inicio},
-  { BOTON_PULSADO, boton_no_presionado_on, ON, 0},
-  { ON, boton_presionado_off, BOTON_PULSADO,  desactivacion_inicio },
+  { OFF, boton_presionado, BOTON_PULSADO, activacion_maquina},
+  { BOTON_PULSADO, maquina_ON, ON, temporizacion_boton_off},
+  {BOTON_PULSADO,led_on,BOTON_PULSADO,led_activado},
+  {BOTON_PULSADO,led_off,BOTON_PULSADO,led_desactivado},
+  { ON, boton_presionado, BOTON_PULSADO,  desactivacion_maquina },
   { ON, led_on, ON, led_activado},
   { ON, led_off, ON, led_desactivado},
-  { BOTON_PULSADO, boton_no_presionado_off, OFF, reinicio_inicio },
+  { BOTON_PULSADO, maquina_OFF, OFF, temporizacion_boton_off },
   {-1, NULL, -1, NULL },
   };
 
