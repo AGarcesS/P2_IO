@@ -53,6 +53,7 @@
 #define WARNING 60
 #define NORMAL 30
 
+#define CANAL_EJE eje*4
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -87,11 +88,11 @@ enum ejes{
 	z
 };
 
-enum salida_eje{
+/*enum salida_eje{
 	normal,
 	warning,
 	fault
-};
+};*/
 
 uint32_t ciclos;
 
@@ -108,7 +109,7 @@ static uint8_t activado = 0;
 
 
 //salidas
-static enum salida_eje *salidas;
+//static enum salida_eje *salidas;
 
 
 //funciones de transicion
@@ -204,7 +205,7 @@ static void desactivacion_muestreo (fsm_t* this)
   free(lectura);
   free(max);
   free(min);
-  free(salidas);
+  //free(salidas);
 }
 
 static void preparacion_muestreo (fsm_t* this)
@@ -218,7 +219,7 @@ static void preparacion_muestreo (fsm_t* this)
   for (int i = 0; i < N_EJES; ++i) {
       lectura[i] = malloc(N_MUESTRAS * sizeof(int16_t));
   }
-  salidas=malloc(N_EJES*sizeof(enum salida_eje));
+  //salidas=malloc(N_EJES*sizeof(enum salida_eje));
   max = malloc(N_EJES * sizeof(int16_t));
   min = malloc(N_EJES * sizeof(int16_t));
 }
@@ -286,20 +287,20 @@ static void preparacion_salida (fsm_t* this)
 
 static void salida_fault (fsm_t* this)
 {
-	salidas[eje]=fault;
-	__HAL_TIM_SET_COMPARE(&htim4, eje*4, FAULT);
+	//salidas[eje]=fault;
+	__HAL_TIM_SET_COMPARE(&htim4, CANAL_EJE, FAULT);
 }
 
 static void salida_warning (fsm_t* this)
 {
-	salidas[eje]=warning;
-	__HAL_TIM_SET_COMPARE(&htim4, eje*4, WARNING);
+	//salidas[eje]=warning;
+	__HAL_TIM_SET_COMPARE(&htim4, CANAL_EJE, WARNING);
 }
 
 static void salida_normal (fsm_t* this)
 {
-	salidas[eje]=normal;
-	__HAL_TIM_SET_COMPARE(&htim4, eje*4, NORMAL);
+	//salidas[eje]=normal;
+	__HAL_TIM_SET_COMPARE(&htim4, CANAL_EJE, NORMAL);
 }
 
 static fsm_trans_t inicio[] = {
