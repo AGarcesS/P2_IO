@@ -53,7 +53,7 @@
 #define WARNING 60
 #define NORMAL 30
 
-#define CANAL_EJE eje*4
+#define CANAL_EJE TIM_CHANNEL_1+eje*4
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
