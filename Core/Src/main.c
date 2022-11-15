@@ -94,6 +94,7 @@ static int16_t *sensor;
 //variables
 static int16_t **lectura, *max, *min;
 static uint8_t muestra = 0, eje = 0;
+
 volatile static uint8_t timer_boton = 1, led_azul = 0, timer_lectura = 0;
 
 //variables compartidas
@@ -105,7 +106,6 @@ static int boton_presionado_on (fsm_t* this) { if (HAL_GPIO_ReadPin(GPIOA, GPIO_
 static int boton_no_presionado_on (fsm_t* this) { if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) && activado) return 1; else return 0; }
 static int boton_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
 static int boton_no_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) return 1; else return 0; }
-
 
 static int activado_on (fsm_t* this) { return activado; }
 static int activado_off (fsm_t* this) { return !activado; }
@@ -192,8 +192,7 @@ static void preparacion_muestreo (fsm_t* this)
   timer_lectura=0;
   __HAL_TIM_SET_COUNTER(&htim7,0); //Reinicio a cero del temporizador de muestreo
   HAL_TIM_Base_Start_IT(&htim7); //Temporizador para hacer las lecturas
-
-  sensor = malloc(N_EJES * sizeof(uint16_t));
+  sensor = malloc(N_EJES * sizeof(int16_t));
   lectura = malloc(N_EJES * sizeof(int16_t*));
   for (int i = 0; i < N_EJES; ++i) {
       lectura[i] = malloc(N_MUESTRAS * sizeof(int16_t));
