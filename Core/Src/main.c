@@ -44,8 +44,6 @@
 #define N_MUESTRAS 20
 #define N_EJES 3
 
-#define CICLOS_LED 2
-
 #define TH_HIGH 200
 #define TH_LOW 100
 
@@ -53,6 +51,7 @@
 #define WARNING 60
 #define NORMAL 30
 
+#define CANAL_EJE TIM_CHANNEL_1+eje*4
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -72,12 +71,11 @@ enum start_state {
 };
 
 //Estados FSM Lectura-Espera
-enum lecture_state_x{
+enum lecture_state{
 	STOP,
 	MUESTREO,
 	MAX_MIN,
 	CONTADOR_MUESTRA,
-	CONTADOR_EJE,
 	SALIDA,
 	GRADO
 };
@@ -96,25 +94,18 @@ static int16_t *sensor;
 //variables
 static int16_t **lectura, *max, *min;
 static uint8_t muestra = 0, eje = 0;
-static uint8_t timer_boton = 0, counter_led = 0, timer_lectura = 0;
+
+volatile static uint8_t timer_boton = 1, led_azul = 0, timer_lectura = 0;
 
 //variables compartidas
 static uint8_t activado = 0;
 
-//salidas
-static uint8_t faultx = 0, warningx = 0, normalx = 0;
-static uint8_t faulty = 0, warningy = 0, normaly = 0;
-static uint8_t faultz = 0, warningz = 0, normalz = 0;
-static uint8_t led_azul = 0;
 
 //funciones de transicion
 static int boton_presionado_on (fsm_t* this) { if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
 static int boton_no_presionado_on (fsm_t* this) { if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) && activado) return 1; else return 0; }
 static int boton_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
 static int boton_no_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) return 1; else return 0; }
-
-static int led_on (fsm_t* this) { if((counter_led >= CICLOS_LED - 1) && (counter_led < CICLOS_LED)) return 1; else return 0; }
-static int led_off (fsm_t* this) { if(counter_led >= CICLOS_LED) return 1; else return 0;}
 
 static int activado_on (fsm_t* this) { return activado; }
 static int activado_off (fsm_t* this) { return !activado; }
@@ -129,9 +120,9 @@ static int eje_listo (fsm_t* this)  {if ((muestra >= N_MUESTRAS - 1) && (eje >= 
 static int max_muestra (fsm_t* this)  {if ((lectura[eje][muestra] >= max[eje]) && activado) return 1; else return 0;}
 static int min_muestra (fsm_t* this)  {if ((lectura[eje][muestra] < min[eje]) && activado) return 1; else return 0;}
 static int med_muestra (fsm_t* this)  {if ((lectura[eje][muestra] >= min[eje]) && (lectura[eje][muestra] < max[eje]) && activado) return 1; else return 0;}
-static int fault (fsm_t* this)  {if (((max[eje] - min[eje]) >= TH_HIGH) && activado) return 1; else return 0;}
-static int warning (fsm_t* this)  {if (((max[eje] - min[eje]) < TH_HIGH) && ((max[eje] - min[eje]) > TH_LOW) && activado) return 1; else return 0;}
-static int normal (fsm_t* this)  {if (((max[eje] - min[eje]) <= TH_LOW) && activado) return 1; else return 0;}
+static int out_fault (fsm_t* this)  {if (((max[eje] - min[eje]) >= TH_HIGH) && activado) return 1; else return 0;}
+static int out_warning (fsm_t* this)  {if (((max[eje] - min[eje]) < TH_HIGH) && ((max[eje] - min[eje]) > TH_LOW) && activado) return 1; else return 0;}
+static int out_normal (fsm_t* this)  {if (((max[eje] - min[eje]) <= TH_LOW) && activado) return 1; else return 0;}
 
 /* USER CODE END PV */
 
@@ -149,6 +140,10 @@ void MX_USB_HOST_Process(void);
 static void activacion_inicio (fsm_t* this)
 {
   activado = 1;
+  timer_boton=0;
+  led_azul=0;
+  __HAL_TIM_SET_COUNTER(&htim9,0); //Reinicio a cero del temporizador del boton
+  __HAL_TIM_SET_COUNTER(&htim6,0); //Reinicio a cero del temporizador del led
   HAL_TIM_Base_Start_IT(&htim9); //Temporizador boton
   HAL_TIM_Base_Start_IT(&htim6); //Temporizador del led azul
 }
@@ -157,8 +152,9 @@ static void desactivacion_inicio (fsm_t* this)
 {
   activado = 0;
   timer_boton = 0;
+  led_azul=0;
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
-
+  HAL_TIM_Base_Stop_IT(&htim6); //Temporizador del led azul stop
 }
 
 static void reinicio_inicio (fsm_t* this)
@@ -168,46 +164,33 @@ static void reinicio_inicio (fsm_t* this)
   timer_boton = 0;
 }
 
+static void toggle_led (fsm_t* this)
+{
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, led_azul);
+}
+
 static void desactivacion_muestreo (fsm_t* this)
 {
   muestra = 0;
   eje = 0;
-  faultx = 0;
-  warningx = 0;
-  normalx = 0;
-  faulty = 0;
-  warningy = 0;
-  normaly = 0;
-  faultz = 0;
-  warningz = 0;
-  normalz = 0;
+
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 0);
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, 0);
+  HAL_TIM_Base_Stop_IT(&htim7);
   free(sensor);
   for (int i = 0; i < N_EJES; ++i) {
-	free(lectura[i]);
+	  free(lectura[i]);
   }
   free(lectura);
   free(max);
   free(min);
 }
 
-static void led_activado (fsm_t* this)
-{
-  led_azul = 1;
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 1);
-}
-
-static void led_desactivado (fsm_t* this)
-{
-  led_azul = 0;
-  counter_led = 0;
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
-}
-
 static void preparacion_muestreo (fsm_t* this)
 {
+  timer_lectura=0;
+  __HAL_TIM_SET_COUNTER(&htim7,0); //Reinicio a cero del temporizador de muestreo
   HAL_TIM_Base_Start_IT(&htim7); //Temporizador para hacer las lecturas
   sensor = malloc(N_EJES * sizeof(int16_t));
   lectura = malloc(N_EJES * sizeof(int16_t*));
@@ -227,6 +210,7 @@ static void muestreo_ejes (fsm_t* this)
   muestra++;
 
   timer_lectura = 0;
+  __HAL_TIM_SET_COUNTER(&htim9,0); //Reinicio a cero del temporizador del boton
 }
 
 static void cambio_eje (fsm_t* this)
@@ -244,13 +228,7 @@ static void fin_muestreo (fsm_t* this)
 	  min[i] = lectura[i][0];
   }
   HAL_TIM_Base_Stop_IT(&htim7); //Temporizador para hacer las lecturas
-}
-
-static void fin_lectura (fsm_t* this)
-{
-  eje = 0;
-  muestra = 0;
-  HAL_TIM_Base_Start_IT(&htim7); //Temporizador para hacer las lecturas
+  __HAL_TIM_SET_COUNTER(&htim7,0); //Reinicio a cero del temporizador de lecturas
 }
 
 static void salida_max (fsm_t* this)
@@ -258,9 +236,18 @@ static void salida_max (fsm_t* this)
   max[eje] = lectura[eje][muestra];
 }
 
+
 static void salida_min (fsm_t* this)
 {
   min[eje] = lectura[eje][muestra];
+}
+
+static void fin_lectura (fsm_t* this)
+{
+  eje = 0;
+  muestra = 0;
+  __HAL_TIM_SET_COUNTER(&htim7,0); //Reinicio a cero del temporizador de lecturas
+  HAL_TIM_Base_Start_IT(&htim7); //Temporizador para hacer las lecturas
 }
 
 static void cambio_muestra (fsm_t* this)
@@ -277,84 +264,25 @@ static void preparacion_salida (fsm_t* this)
 
 static void salida_fault (fsm_t* this)
 {
-
- switch(eje){
- case 0:
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, FAULT);
-	faultx = 1;
-	warningx = 0;
-	normalx = 0;
-	break;
- case 1:
- 	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, FAULT);
-	faulty = 1;
-	warningy = 0;
-	normaly = 0;
- 	break;
- case 2:
- 	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, FAULT);
-	faultz = 1;
-	warningz = 0;
-	normalz = 0;
- 	break;
- }
-
+	__HAL_TIM_SET_COMPARE(&htim4, CANAL_EJE, FAULT);
 }
 
 static void salida_warning (fsm_t* this)
 {
-  switch(eje){
-  case 0:
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, WARNING);
-	faultx = 0;
-	warningx = 1;
-	normalx = 0;
-	break;
-  case 1:
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, WARNING);
-	faulty = 0;
-	warningy = 1;
-	normaly = 0;
-	break;
-  case 2:
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, WARNING);
-	faultz = 0;
-	warningz = 1;
-	normalz = 0;
-	break;
-  }
+	__HAL_TIM_SET_COMPARE(&htim4, CANAL_EJE, WARNING);
 }
 
 static void salida_normal (fsm_t* this)
 {
-  switch(eje){
-  case 0:
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, NORMAL);
-	faultx = 0;
-	warningx = 0;
-	normalx = 1;
-	break;
-  case 1:
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, NORMAL);
-	faulty = 0;
-	warningy = 0;
-	normaly = 1;
-	break;
-  case 2:
-	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, NORMAL);
-	faultz = 0;
-	warningz = 0;
-	normalz = 1;
-	break;
-  }
+	__HAL_TIM_SET_COMPARE(&htim4, CANAL_EJE, NORMAL);
 }
 
 static fsm_trans_t inicio[] = {
   { OFF, boton_presionado_on, BOTON_PULSADO, activacion_inicio},
   { BOTON_PULSADO, boton_no_presionado_on, ON, 0},
+  {BOTON_PULSADO,activado_on,BOTON_PULSADO,toggle_led},
   { ON, boton_presionado_off, BOTON_PULSADO,  desactivacion_inicio },
-  { ON, led_on, ON, led_activado},
-  { ON, led_off, ON, led_desactivado},
+  { ON, activado_on, ON, toggle_led},
   { BOTON_PULSADO, boton_no_presionado_off, OFF, reinicio_inicio },
   {-1, NULL, -1, NULL },
   };
@@ -373,9 +301,9 @@ static fsm_trans_t muestreo_acc[] = {
   { CONTADOR_MUESTRA, eje_no_listo, MAX_MIN, cambio_eje},
   { CONTADOR_MUESTRA, eje_listo, SALIDA, preparacion_salida},
   { SALIDA, activado_off, STOP, desactivacion_muestreo},
-  { SALIDA, fault, GRADO, salida_fault},
-  { SALIDA, warning, GRADO, salida_warning},
-  { SALIDA, normal, GRADO, salida_normal},
+  { SALIDA, out_fault, GRADO, salida_fault},
+  { SALIDA, out_warning, GRADO, salida_warning},
+  { SALIDA, out_normal, GRADO, salida_normal},
   { GRADO, activado_off, STOP, desactivacion_muestreo},
   { GRADO, eje_no_max, SALIDA, cambio_eje},
   { GRADO, eje_max_fin, MUESTREO, fin_lectura},
@@ -460,8 +388,6 @@ int main(void)
     ciclos = KIN1_GetCycleCounter();
   }
 
-
-
   /* USER CODE END 3 */
 }
 
@@ -514,8 +440,10 @@ void SystemClock_Config(void)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 {
-	if(htim->Instance==TIM6)
-		counter_led++;
+	if(htim->Instance==TIM6){
+		if(led_azul){led_azul=0;}
+		else {led_azul=1;}
+	}
 	if(htim->Instance==TIM7)
 		timer_lectura = 1;
 	if(htim->Instance==TIM9)
