@@ -96,10 +96,10 @@ static int16_t *sensor;
 //variables
 static int16_t **lectura, *max, *min;
 static uint8_t muestra = 0, eje = 0;
+static uint8_t timer_boton = 0, counter_led = 0, timer_lectura = 0;
 
 //variables compartidas
 static uint8_t activado = 0;
-static uint8_t timer_boton = 0, temp_led = 0, timer_lectura = 0;
 
 //salidas
 static uint8_t faultx = 0, warningx = 0, normalx = 0;
@@ -113,8 +113,8 @@ static int boton_no_presionado_on (fsm_t* this) { if ((HAL_GPIO_ReadPin(GPIOA, G
 static int boton_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
 static int boton_no_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) return 1; else return 0; }
 
-static int led_on (fsm_t* this) { if((temp_led >= CICLOS_LED - 1) && (temp_led < CICLOS_LED)) return 1; else return 0; }
-static int led_off (fsm_t* this) { if(temp_led >= CICLOS_LED) return 1; else return 0;}
+static int led_on (fsm_t* this) { if((counter_led >= CICLOS_LED - 1) && (counter_led < CICLOS_LED)) return 1; else return 0; }
+static int led_off (fsm_t* this) { if(counter_led >= CICLOS_LED) return 1; else return 0;}
 
 static int activado_on (fsm_t* this) { return activado; }
 static int activado_off (fsm_t* this) { return !activado; }
@@ -158,12 +158,13 @@ static void desactivacion_inicio (fsm_t* this)
   activado = 0;
   timer_boton = 0;
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
-  HAL_TIM_Base_Stop_IT(&htim6); //Temporizador del led azul
+
 }
 
 static void reinicio_inicio (fsm_t* this)
 {
   HAL_TIM_Base_Stop_IT(&htim9); //Temporizador boton
+  HAL_TIM_Base_Stop_IT(&htim6); //Temporizador del led azul
   timer_boton = 0;
 }
 
@@ -183,6 +184,13 @@ static void desactivacion_muestreo (fsm_t* this)
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 0);
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, 0);
+  free(sensor);
+  for (int i = 0; i < N_EJES; ++i) {
+	free(lectura[i]);
+  }
+  free(lectura);
+  free(max);
+  free(min);
 }
 
 static void led_activado (fsm_t* this)
@@ -194,13 +202,20 @@ static void led_activado (fsm_t* this)
 static void led_desactivado (fsm_t* this)
 {
   led_azul = 0;
-  temp_led = 0;
+  counter_led = 0;
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
 }
 
 static void preparacion_muestreo (fsm_t* this)
 {
   HAL_TIM_Base_Start_IT(&htim7); //Temporizador para hacer las lecturas
+  sensor = malloc(N_EJES * sizeof(int16_t));
+  lectura = malloc(N_EJES * sizeof(int16_t*));
+  for (int i = 0; i < N_EJES; ++i) {
+      lectura[i] = malloc(N_MUESTRAS * sizeof(int16_t));
+  }
+  max = malloc(N_EJES * sizeof(int16_t));
+  min = malloc(N_EJES * sizeof(int16_t));
 }
 
 static void muestreo_ejes (fsm_t* this)
@@ -409,14 +424,6 @@ int main(void)
 
   KIN1_InitCycleCounter();
 
-  sensor = malloc(N_EJES * sizeof(int16_t));
-  lectura = malloc(N_EJES * sizeof(int16_t*));
-  for (uint8_t i = 0; i < N_EJES; i++) {
-      lectura[i] = malloc(N_MUESTRAS * sizeof(int16_t));
-  }
-  max = malloc(N_EJES * sizeof(int16_t));
-  min = malloc(N_EJES * sizeof(int16_t));
-
   //Acelerómetro
   if(BSP_ACCELERO_Init() != HAL_OK){
 	  Error_Handler();
@@ -453,13 +460,7 @@ int main(void)
     ciclos = KIN1_GetCycleCounter();
   }
 
-  free(sensor);
-  for (uint8_t i = 0; i < N_MUESTRAS; i++) {
-      free(lectura[i]);
-  }
-  free(lectura);
-  free(max);
-  free(min);
+
 
   /* USER CODE END 3 */
 }
@@ -514,7 +515,7 @@ void SystemClock_Config(void)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 {
 	if(htim->Instance==TIM6)
-		temp_led++;
+		counter_led++;
 	if(htim->Instance==TIM7)
 		timer_lectura = 1;
 	if(htim->Instance==TIM9)
