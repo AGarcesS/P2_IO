@@ -102,9 +102,6 @@ volatile static uint8_t timer_boton = 1, counter_led = 0, timer_lectura = 0;
 static uint8_t activado = 0;
 
 
-//salidas
-
-
 //funciones de transicion
 static int boton_presionado_on (fsm_t* this) { if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
 static int boton_no_presionado_on (fsm_t* this) { if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) && activado) return 1; else return 0; }
