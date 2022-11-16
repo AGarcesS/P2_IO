@@ -70,6 +70,11 @@ enum start_state {
 	ON
 };
 
+enum led_state {
+	LED_OFF,
+	LED_ON
+};
+
 //Estados FSM Lectura-Espera
 enum lecture_state{
 	STOP,
@@ -95,20 +100,21 @@ static int16_t *sensor;
 static int16_t **lectura, *max, *min;
 static uint8_t muestra = 0, eje = 0;
 
-volatile static uint8_t timer_boton = 1, led_azul = 0, timer_lectura = 0;
+volatile static uint8_t timer_boton = 0, timer_led = 0, timer_lectura = 0;
 
 //variables compartidas
 static uint8_t activado = 0;
 
 
 //funciones de transicion
-static int boton_presionado_on (fsm_t* this) { if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
-static int boton_no_presionado_on (fsm_t* this) { if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) && activado) return 1; else return 0; }
-static int boton_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
-static int boton_no_presionado_off (fsm_t* this) { if (timer_boton && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0) return 1; else return 0; }
+static int boton_presionado (fsm_t* this) { if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
+static int desbloqueo_on (fsm_t* this) { if (timer_boton && activado && (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0)) return 1; else return 0;}
+static int desbloqueo_off (fsm_t* this) { if (timer_boton && !activado && (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 0)) return 1; else return 0; }
 
 static int activado_on (fsm_t* this) { return activado; }
 static int activado_off (fsm_t* this) { return !activado; }
+
+static int led_actualizacion (fsm_t* this) { return timer_led; }
 
 static int muestreo_listo (fsm_t* this)  {if ((muestra < N_MUESTRAS) && timer_lectura && activado ) return 1; else return 0;}
 static int muestra_max (fsm_t* this)  {if ((muestra >= N_MUESTRAS) && activado ) return 1; else return 0;}
@@ -137,36 +143,43 @@ void MX_USB_HOST_Process(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-static void activacion_inicio (fsm_t* this)
+static void inicio_activado (fsm_t* this)
 {
   activado = 1;
-  timer_boton=0;
-  led_azul=0;
-  __HAL_TIM_SET_COUNTER(&htim9,0); //Reinicio a cero del temporizador del boton
-  __HAL_TIM_SET_COUNTER(&htim6,0); //Reinicio a cero del temporizador del led
+  __HAL_TIM_SET_COUNTER(&htim9, 0); //Reinicio a cero del temporizador del boton
   HAL_TIM_Base_Start_IT(&htim9); //Temporizador boton
-  HAL_TIM_Base_Start_IT(&htim6); //Temporizador del led azul
 }
 
-static void desactivacion_inicio (fsm_t* this)
-{
-  activado = 0;
-  timer_boton = 0;
-  led_azul=0;
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
-  HAL_TIM_Base_Stop_IT(&htim6); //Temporizador del led azul stop
-}
-
-static void reinicio_inicio (fsm_t* this)
+static void inicio_actualizacion (fsm_t* this)
 {
   HAL_TIM_Base_Stop_IT(&htim9); //Temporizador boton
-  HAL_TIM_Base_Stop_IT(&htim6); //Temporizador del led azul
   timer_boton = 0;
 }
 
-static void toggle_led (fsm_t* this)
+static void inicio_desactivado (fsm_t* this)
 {
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, led_azul);
+  activado = 0;
+  __HAL_TIM_SET_COUNTER(&htim9, 0); //Reinicio a cero del temporizador del boton
+  HAL_TIM_Base_Start_IT(&htim9); //Temporizador boton
+}
+
+static void led_activado (fsm_t* this)
+{
+  __HAL_TIM_SET_COUNTER(&htim6, 0); //Reinicio a cero del temporizador del LED
+  HAL_TIM_Base_Start_IT(&htim6); //Temporizador LED
+}
+
+static void led_desactivado (fsm_t* this)
+{
+  HAL_TIM_Base_Stop_IT(&htim6); //Temporizador LED
+  timer_led = 0;
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
+}
+
+static void led_toggle (fsm_t* this)
+{
+  HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+  timer_led = 0;
 }
 
 static void desactivacion_muestreo (fsm_t* this)
@@ -278,12 +291,17 @@ static void salida_normal (fsm_t* this)
 }
 
 static fsm_trans_t inicio[] = {
-  { OFF, boton_presionado_on, BOTON_PULSADO, activacion_inicio},
-  { BOTON_PULSADO, boton_no_presionado_on, ON, 0},
-  {BOTON_PULSADO,activado_on,BOTON_PULSADO,toggle_led},
-  { ON, boton_presionado_off, BOTON_PULSADO,  desactivacion_inicio },
-  { ON, activado_on, ON, toggle_led},
-  { BOTON_PULSADO, boton_no_presionado_off, OFF, reinicio_inicio },
+  { OFF, boton_presionado, BOTON_PULSADO, inicio_activado},
+  { BOTON_PULSADO, desbloqueo_on, ON, inicio_actualizacion},
+  { ON, boton_presionado, BOTON_PULSADO,  inicio_desactivado },
+  { BOTON_PULSADO, desbloqueo_off, OFF, inicio_actualizacion },
+  {-1, NULL, -1, NULL },
+  };
+
+static fsm_trans_t led[] = {
+  { LED_OFF, activado_on, LED_ON, led_activado},
+  { LED_ON, led_actualizacion, LED_ON, led_toggle},
+  { LED_ON, activado_off, LED_OFF, led_desactivado},
   {-1, NULL, -1, NULL },
   };
 
@@ -364,8 +382,9 @@ int main(void)
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
 
   //Creación de las FSM
-  fsm_t* fsm_inicio = fsm_new (inicio);
-  fsm_t* fsm_lectura = fsm_new (muestreo_acc);
+  fsm_t* fsm_inicio = fsm_new(inicio);
+  fsm_t* fsm_led = fsm_new(led);
+  fsm_t* fsm_lectura = fsm_new(muestreo_acc);
 
   /* USER CODE END 2 */
 
@@ -381,8 +400,9 @@ int main(void)
     KIN1_ResetCycleCounter();
     KIN1_EnableCycleCounter();
 
-    fsm_fire (fsm_inicio);
-    fsm_fire (fsm_lectura);
+    fsm_fire(fsm_inicio);
+    fsm_fire(fsm_led);
+    fsm_fire(fsm_lectura);
     HAL_Delay(1);
 
     ciclos = KIN1_GetCycleCounter();
@@ -440,13 +460,11 @@ void SystemClock_Config(void)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 {
-	if(htim->Instance==TIM6){
-		if(led_azul){led_azul=0;}
-		else {led_azul=1;}
-	}
-	if(htim->Instance==TIM7)
+	if(htim->Instance == TIM6)
+		timer_led = 1;
+	if(htim->Instance == TIM7)
 		timer_lectura = 1;
-	if(htim->Instance==TIM9)
+	if(htim->Instance == TIM9)
 		timer_boton = 1;
 }
 
