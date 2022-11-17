@@ -350,7 +350,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-//  HAL_Init();
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -383,7 +383,6 @@ int main(void)
   }
 
   //Temporizadores
-
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
@@ -407,9 +406,7 @@ int main(void)
     fsm_fire(fsm_led);
     fsm_fire(fsm_lectura);
 
-
     HAL_Delay(1);
-
 
   }
 
