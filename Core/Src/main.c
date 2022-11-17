@@ -50,6 +50,7 @@
 #define FAULT 90
 #define WARNING 60
 #define NORMAL 30
+#define SALIDA_OFF 0
 
 #define CANAL_EJE TIM_CHANNEL_1+eje*4
 /* USER CODE END PD */
@@ -188,9 +189,9 @@ static void desactivacion_muestreo (fsm_t* this)
   muestra = 0;
   eje = 0;
 
-  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
-  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 0);
-  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, 0);
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, SALIDA_OFF);
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, SALIDA_OFF);
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, SALIDA_OFF);
   HAL_TIM_Base_Stop_IT(&htim7);
   free(sensor);
   for (int i = 0; i < N_EJES; ++i) {
@@ -227,7 +228,7 @@ static void muestreo_ejes (fsm_t* this)
   muestra++;
 
   timer_lectura = 0;
-  __HAL_TIM_SET_COUNTER(&htim9,0); //Reinicio a cero del temporizador del boton
+  __HAL_TIM_SET_COUNTER(&htim9, 0); //Reinicio a cero del temporizador del boton
 }
 
 static void cambio_eje (fsm_t* this)
