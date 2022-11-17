@@ -180,6 +180,7 @@ static void led_toggle (fsm_t* this)
 {
   HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
   timer_led = 0;
+  __HAL_TIM_SET_COUNTER(&htim6, 0); //Reinicio a cero del temporizador del LED
 }
 
 static void desactivacion_muestreo (fsm_t* this)
@@ -396,16 +397,17 @@ int main(void)
     MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
-
     KIN1_ResetCycleCounter();
     KIN1_EnableCycleCounter();
 
     fsm_fire(fsm_inicio);
     fsm_fire(fsm_led);
     fsm_fire(fsm_lectura);
+    ciclos = KIN1_GetCycleCounter();
+
     HAL_Delay(1);
 
-    ciclos = KIN1_GetCycleCounter();
+
   }
 
   /* USER CODE END 3 */
