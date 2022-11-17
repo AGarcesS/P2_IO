@@ -199,6 +199,9 @@ static void desactivacion_muestreo (fsm_t* this)
   free(lectura);
   free(max);
   free(min);
+  ciclos = KIN1_GetCycleCounter();
+  KIN1_ResetCycleCounter();
+  KIN1_EnableCycleCounter();
 }
 
 static void preparacion_muestreo (fsm_t* this)
@@ -262,6 +265,9 @@ static void fin_lectura (fsm_t* this)
   muestra = 0;
   __HAL_TIM_SET_COUNTER(&htim7,0); //Reinicio a cero del temporizador de lecturas
   HAL_TIM_Base_Start_IT(&htim7); //Temporizador para hacer las lecturas
+  ciclos = KIN1_GetCycleCounter();
+  KIN1_ResetCycleCounter();
+  KIN1_EnableCycleCounter();
 }
 
 static void cambio_muestra (fsm_t* this)
@@ -344,7 +350,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+//  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -397,13 +403,10 @@ int main(void)
     MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
-    KIN1_ResetCycleCounter();
-    KIN1_EnableCycleCounter();
-
     fsm_fire(fsm_inicio);
     fsm_fire(fsm_led);
     fsm_fire(fsm_lectura);
-    ciclos = KIN1_GetCycleCounter();
+
 
     HAL_Delay(1);
 
