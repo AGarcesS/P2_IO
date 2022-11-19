@@ -52,7 +52,7 @@
 #define NORMAL 30
 #define SALIDA_OFF 0
 
-#define CANAL_EJE TIM_CHANNEL_1+eje*4
+#define TIMER_PWM 4
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -105,7 +105,6 @@ volatile static uint8_t timer_boton = 0, timer_led = 0, timer_lectura = 0;
 
 //variables compartidas
 static uint8_t activado = 0;
-
 
 //funciones de transicion
 static int boton_presionado (fsm_t* this) { if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1) return 1; else return 0; }
@@ -285,17 +284,17 @@ static void preparacion_salida (fsm_t* this)
 
 static void salida_fault (fsm_t* this)
 {
-	__HAL_TIM_SET_COMPARE(&htim4, CANAL_EJE, FAULT);
+	__HAL_TIM_SET_COMPARE(&htim4, TIMER_PWM * eje, FAULT);
 }
 
 static void salida_warning (fsm_t* this)
 {
-	__HAL_TIM_SET_COMPARE(&htim4, CANAL_EJE, WARNING);
+	__HAL_TIM_SET_COMPARE(&htim4, TIMER_PWM * eje, WARNING);
 }
 
 static void salida_normal (fsm_t* this)
 {
-	__HAL_TIM_SET_COMPARE(&htim4, CANAL_EJE, NORMAL);
+	__HAL_TIM_SET_COMPARE(&htim4, TIMER_PWM * eje, NORMAL);
 }
 
 static fsm_trans_t inicio[] = {
